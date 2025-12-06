@@ -249,3 +249,42 @@ class ConversationListResponse(BaseModel):
             }
         }
 
+
+class RetrieveResultItem(BaseModel):
+    """Schema for a single retrieve result item."""
+
+    chunk_id: str = Field(..., description="Chunk identifier")
+    file_id: str = Field(..., description="File ID this chunk belongs to")
+    chunk_text: str = Field(..., description="Chunk text content")
+    similarity_score: float = Field(..., description="Similarity score")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "chunk_id": "123e4567-e89b-12d3-a456-426614174000-chunk-0",
+                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                "chunk_text": "This is a relevant chunk of text...",
+                "similarity_score": 0.92,
+            }
+        }
+
+
+class RetrieveResponse(BaseModel):
+    """Response schema for retrieve endpoint."""
+
+    results: List[RetrieveResultItem] = Field(..., description="List of retrieved chunks")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "results": [
+                    {
+                        "chunk_id": "123e4567-e89b-12d3-a456-426614174000-chunk-0",
+                        "file_id": "123e4567-e89b-12d3-a456-426614174000",
+                        "chunk_text": "This is a relevant chunk...",
+                        "similarity_score": 0.92,
+                    }
+                ],
+            }
+        }
+

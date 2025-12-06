@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from dao.models import File, Conversation, Message  # noqa: F401
 
 # Import routers
-from api.routes import file_router, webhook_router, chat_router
+from api.routes import file_router, webhook_router, chat_router, retrieve_router
 
 app = FastAPI(
     title="Chat with PDF API",
@@ -19,6 +19,7 @@ app = FastAPI(
 app.include_router(file_router.router)
 app.include_router(webhook_router.router)
 app.include_router(chat_router.router)
+app.include_router(retrieve_router.router)
 
 
 @app.get("/")

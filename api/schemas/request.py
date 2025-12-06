@@ -2,7 +2,7 @@
 Pydantic request schemas for API endpoints.
 """
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 
 
 class PresignRequest(BaseModel):
@@ -50,5 +50,24 @@ class ChatRequest(BaseModel):
                 "message": "What is this document about?",
                 "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
                 "file_id": "123e4567-e89b-12d3-a456-426614174000",
+            }
+        }
+
+
+class RetrieveRequest(BaseModel):
+    """Request schema for retrieve endpoint."""
+
+    file_ids: List[str] = Field(
+        ..., description="List of file IDs to search in", min_items=1
+    )
+    query: str = Field(..., description="Search query", min_length=1)
+    top_k: int = Field(5, description="Number of top results to return", ge=1, le=20)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "file_ids": ["123e4567-e89b-12d3-a456-426614174000"],
+                "query": "What is the main topic?",
+                "top_k": 5,
             }
         }

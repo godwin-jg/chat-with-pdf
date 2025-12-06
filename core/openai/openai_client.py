@@ -307,6 +307,44 @@ class OpenAIClient:
         """
         return {"role": role, "content": text}
 
+    def get_embeddings(self, text_chunks: List[str]) -> List[List[float]]:
+        """
+        Generate embeddings for text chunks using OpenAI's text-embedding-3-small model.
+
+        Args:
+            text_chunks: List of text strings to embed
+
+        Returns:
+            List of embedding vectors (each is a list of floats)
+
+        Raises:
+            ValueError: If API call fails or no chunks provided
+        """
+        if not text_chunks:
+            raise ValueError("text_chunks cannot be empty")
+
+        try:
+            logger.info(f"Generating embeddings for {len(text_chunks)} chunks using {settings.OPENAI_EMBEDDING_MODEL}")
+            
+            # Call OpenAI embeddings API
+            response = self.client.embeddings.create(
+                model=settings.OPENAI_EMBEDDING_MODEL,
+                input=text_chunks,
+            )
+            
+            # Extract embeddings from response
+            embeddings = [item.embedding for item in response.data]
+            
+            logger.info(
+                f"Successfully generated {len(embeddings)} embeddings "
+                f"(dimension: {len(embeddings[0]) if embeddings else 0})"
+            )
+            
+            return embeddings
+        except Exception as e:
+            logger.error(f"Error generating embeddings: {e}")
+            raise ValueError(f"Failed to generate embeddings: {str(e)}")
+
 
 # Global OpenAI client instance (lazy initialization)
 _openai_client: Optional[OpenAIClient] = None
