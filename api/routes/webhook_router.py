@@ -49,10 +49,15 @@ async def ingest_file(
     # Commit the transaction
     await session.commit()
 
+    from dao.models.file import IngestionStatus
+    
+    # Get ingestion_status as string
+    status_value = file.ingestion_status.value if isinstance(file.ingestion_status, IngestionStatus) else str(file.ingestion_status)
+    
     return WebhookIngestResponse(
         file_id=str(file.id),
         s3_key=file.s3_key,
-        ingestion_status=file.ingestion_status.value,
+        ingestion_status=status_value,
         message="File record created successfully",
     )
 

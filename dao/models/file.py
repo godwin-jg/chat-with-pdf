@@ -1,8 +1,8 @@
 """
 File model for storing PDF file metadata.
 """
-from sqlalchemy import Column, String, Enum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String
+from sqlalchemy.dialects.postgresql import ENUM
 import enum
 from dao.models.base import BaseModel
 
@@ -22,7 +22,7 @@ class File(BaseModel):
 
     s3_key = Column(String, nullable=False, unique=True, index=True)
     ingestion_status = Column(
-        Enum(IngestionStatus),
+        ENUM(IngestionStatus, name="ingestionstatus", create_type=False, native_enum=True, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=IngestionStatus.UPLOADED,
         index=True,

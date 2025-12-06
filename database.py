@@ -68,6 +68,7 @@ async def get_db() -> AsyncSession:
     Dependency function to get database session.
     Yields a database session and ensures it's closed after use.
     """
+    AsyncSessionLocal = get_async_session_local()
     async with AsyncSessionLocal() as session:
         try:
             yield session

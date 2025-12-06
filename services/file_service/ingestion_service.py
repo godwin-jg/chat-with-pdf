@@ -70,7 +70,7 @@ class IngestionService:
         file_uuid = uuid.UUID(file_id)
         file = await self.file_dao.create(
             session,
-            id=file_uuid,  # Use the extracted file_id as the primary key
+            id=file_uuid,
             s3_key=s3_key,
             ingestion_status=IngestionStatus.UPLOADED,
         )
