@@ -28,18 +28,18 @@ class S3Client:
         )
         self.bucket_name = settings.AWS_S3_BUCKET
 
-    def generate_presigned_post(
+    def generate_presigned_upload_url(
         self, file_id: str, expires_in: int = 3600
-    ) -> dict:
+    ) -> str:
         """
-        Generate a presigned POST URL for uploading a file to S3.
+        Generate a presigned PUT URL for uploading a file to S3.
 
         Args:
             file_id: Unique file identifier (UUID)
             expires_in: Expiration time in seconds (default: 1 hour)
 
         Returns:
-            Dictionary containing presigned POST data including URL and fields
+            Presigned PUT URL string
 
         Raises:
             ClientError: If presigned URL generation fails
@@ -47,17 +47,19 @@ class S3Client:
         s3_key = f"uploads/{file_id}.pdf"
 
         try:
-            response = self.s3_client.generate_presigned_post(
-                Bucket=self.bucket_name,
-                Key=s3_key,
-                Fields={"Content-Type": "application/pdf"},
-                Conditions=[{"Content-Type": "application/pdf"}],
+            url = self.s3_client.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": self.bucket_name,
+                    "Key": s3_key,
+                    "ContentType": "application/pdf",
+                },
                 ExpiresIn=expires_in,
             )
-            logger.info(f"Generated presigned POST URL for {s3_key}")
-            return response
+            logger.info(f"Generated presigned PUT URL for {s3_key}")
+            return url
         except ClientError as e:
-            logger.error(f"Error generating presigned POST URL: {e}")
+            logger.error(f"Error generating presigned PUT URL: {e}")
             raise
 
     def generate_presigned_url(
