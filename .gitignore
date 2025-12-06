@@ -36,22 +36,99 @@ ENV/
 # Environment variables
 .env
 .env.local
+.env.*.local
+*.env
+
+# AWS Credentials (CRITICAL - never commit credentials)
+aws-credentials*.txt
+*.pem
+*.key
+.aws/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
 
 # Alembic
 alembic.ini.bak
 
 # Logs
 *.log
+logs/
+*.log.*
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+*.sublime-project
+*.sublime-workspace
 
 # Testing
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+.tox/
+.hypothesis/
+.pytest_cache/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
 
 # Jupyter
 .ipynb_checkpoints
+*.ipynb
 
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Poetry (lock file should be committed, but cache should not)
+.poetry/
+
+# Local development
+local/
+tmp/
+temp/
