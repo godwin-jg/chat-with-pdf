@@ -21,7 +21,9 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-4o-mini"
+    # Primary model (will try fallbacks automatically if not available)
+    # For PDF support via vision API, prefer: gpt-4o-mini, gpt-4o, gpt-4-turbo
+    OPENAI_MODEL: str = "gpt-4.1-mini"  # Available models: gpt-4.1-mini, gpt-4.1
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
 
     # Upstash Vector

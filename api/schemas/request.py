@@ -32,3 +32,23 @@ class WebhookIngestRequest(BaseModel):
             }
         }
 
+
+class ChatRequest(BaseModel):
+    """Request schema for chat endpoint."""
+
+    message: str = Field(..., description="User's message", min_length=1)
+    conversation_id: Optional[str] = Field(
+        None, description="Conversation ID (creates new if not provided)"
+    )
+    file_id: Optional[str] = Field(
+        None, description="File ID to associate with this message (optional)"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "What is this document about?",
+                "conversation_id": "123e4567-e89b-12d3-a456-426614174000",
+                "file_id": "123e4567-e89b-12d3-a456-426614174000",
+            }
+        }

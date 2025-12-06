@@ -33,7 +33,7 @@ class Message(BaseModel):
         nullable=False,
         index=True,
     )
-    role = Column(Enum(MessageRole), nullable=False)
+    role = Column(Enum(MessageRole, values_callable=lambda x: [e.value for e in x], native_enum=False, length=20), nullable=False)
     content = Column(Text, nullable=False)
     file_id = Column(
         UUID(as_uuid=True),
@@ -41,7 +41,7 @@ class Message(BaseModel):
         nullable=True,
         index=True,
     )
-    retrieval_mode = Column(Enum(RetrievalMode), nullable=True)
+    retrieval_mode = Column(Enum(RetrievalMode, values_callable=lambda x: [e.value for e in x], native_enum=False, length=20), nullable=True)
     retrieved_chunks = Column(JSON, nullable=True)
 
     # Relationships
