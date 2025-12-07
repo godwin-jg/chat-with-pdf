@@ -41,7 +41,6 @@ async def retrieve_chunks(
     upstash_client = get_upstash_client()
 
     try:
-        # Step 1: Generate embedding for the query
         logger.info(f"Generating query embedding for: {request.query[:50]}...")
         query_embeddings = openai_client.get_embeddings([request.query])
         if not query_embeddings or len(query_embeddings) == 0:
@@ -50,12 +49,9 @@ async def retrieve_chunks(
             )
         query_vector = query_embeddings[0]
 
-        # Step 2: Build metadata filter for file_ids
-        # Upstash supports filtering with: "file_id = 'uuid1' OR file_id = 'uuid2'"
         if len(request.file_ids) == 1:
             filter_str = f"file_id = '{request.file_ids[0]}'"
         else:
-            # Multiple file_ids: use OR conditions
             filter_parts = [f"file_id = '{fid}'" for fid in request.file_ids]
             filter_str = " OR ".join(filter_parts)
 
@@ -63,14 +59,12 @@ async def retrieve_chunks(
             f"Querying Upstash Vector with filter: {filter_str}, top_k={request.top_k}"
         )
 
-        # Step 3: Query Upstash Vector
         results = upstash_client.query_vectors(
             query_vector=query_vector,
             top_k=request.top_k,
             filter=filter_str,
         )
 
-        # Step 4: Format results
         retrieve_items = []
         for result in results:
             metadata = result.get("metadata", {})

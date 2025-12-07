@@ -52,7 +52,6 @@ async def chat(
             )
         )
 
-        # Format retrieved chunks for response
         formatted_chunks = []
         if retrieved_chunks:
             for chunk in retrieved_chunks:
@@ -99,7 +98,6 @@ async def list_conversations(
         session=session, limit=limit, offset=offset
     )
 
-    # Get message count for each conversation
     chat_items = []
     for conv in conversations:
         message_count = await message_dao.get_message_count_by_conversation(

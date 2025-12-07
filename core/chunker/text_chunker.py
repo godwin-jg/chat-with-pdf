@@ -31,11 +31,9 @@ def chunk_text(text: str, chunk_size: int = 512, overlap: int = 102) -> List[str
     if not text or not text.strip():
         return []
     
-    # Convert token sizes to character sizes (approx 4 chars per token)
     chunk_size_chars = chunk_size * 4
     overlap_chars = overlap * 4
     
-    # If text is smaller than one chunk, return as single chunk
     if len(text) <= chunk_size_chars:
         return [text.strip()]
     
@@ -44,37 +42,28 @@ def chunk_text(text: str, chunk_size: int = 512, overlap: int = 102) -> List[str
     text_length = len(text)
     
     while start < text_length:
-        # Calculate end position for this chunk
         end = start + chunk_size_chars
         
-        # If this is not the last chunk, try to break at word boundary
         if end < text_length:
-            # Look for word boundary (space, newline, punctuation) near the end
-            # Search backwards from end position up to 20% of chunk size
             search_limit = int(chunk_size_chars * 0.2)
             boundary_pos = end
             
-            # Try to find a good breaking point
             for i in range(end, max(start, end - search_limit), -1):
                 if i < text_length and text[i] in [' ', '\n', '.', '!', '?', '\t']:
                     boundary_pos = i + 1
                     break
             
-            # If no boundary found, use the original end position
             end = boundary_pos
         
-        # Extract chunk
         chunk = text[start:end].strip()
         
-        if chunk:  # Only add non-empty chunks
+        if chunk:
             chunks.append(chunk)
             logger.debug(
                 f"Created chunk {len(chunks)}: {len(chunk)} chars "
                 f"(start={start}, end={end})"
             )
         
-        # Move start position forward with overlap
-        # Next chunk starts at: current_end - overlap
         if end >= text_length:
             break
         

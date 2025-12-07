@@ -76,11 +76,9 @@ class IngestionService:
 
             logger.info(f"Starting ingestion for file {file_id}")
 
-            # Step 1: Download
             logger.info(f"Downloading PDF from S3: {file.s3_key}")
             pdf_bytes = self.s3_client.download_file(file.s3_key)
 
-            # Step 2: Extract & Sanitize
             raw_text = extract_text_from_pdf(pdf_bytes)
             text = self._sanitize_text(raw_text)
             
@@ -89,22 +87,19 @@ class IngestionService:
             
             logger.info(f"Extracted {len(text)} chars")
 
-            # Step 3: Chunk
             chunks = chunk_text(text, chunk_size=512, overlap=102)
             if not chunks:
                 raise ValueError("No chunks created")
 
-            # Step 4: Embed
             logger.info(f"Generating embeddings for {len(chunks)} chunks...")
             embeddings = self.openai_client.get_embeddings(chunks)
 
-            # Step 5: Upsert
             vector_ids = [f"{file_id}-chunk-{i}" for i in range(len(chunks))]
             metadata_list = [
                 {
                     "file_id": file_id,
                     "chunk_index": i,
-                    "chunk_text": self._sanitize_text(chunk[:200])  # Truncate and sanitize
+                    "chunk_text": self._sanitize_text(chunk[:200])
                 }
                 for i, chunk in enumerate(chunks)
             ]
@@ -116,7 +111,6 @@ class IngestionService:
                 metadata=metadata_list,
             )
 
-            # Step 6: Success
             await self.file_dao.update_status(session, file_id, IngestionStatus.COMPLETED)
             await session.commit()
             logger.info(f"✅ Ingestion complete: {file_id}")

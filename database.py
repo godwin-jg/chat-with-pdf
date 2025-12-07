@@ -5,11 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.orm import declarative_base
 from config import settings
 
-# Base class for all models
 Base = declarative_base()
 
-# Lazy initialization of engine and session factory
-# This prevents connection attempts during module import (e.g., for Alembic)
 _engine = None
 _AsyncSessionLocal = None
 
@@ -52,8 +49,6 @@ def get_async_session_local():
     return _AsyncSessionLocal
 
 
-# For backward compatibility, provide module-level accessors
-# These will initialize on first access
 def __getattr__(name):
     """Lazy attribute access for engine and AsyncSessionLocal."""
     if name == "engine":

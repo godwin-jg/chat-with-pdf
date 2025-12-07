@@ -4,10 +4,33 @@ Solution: Since the assignment states we "can simulate or use actual Lambda," I 
 
 Implementation Details:
 
-I created lambda_function.py to demonstrate exactly how the cloud function would look if deployed (runtime: Python 3.12).
+I created lambda_function.py to demonstrate exactly how the cloud function would look if deployed (runtime: Python 3.14).
 
-I updated the API to verify it accepts the standard S3 event JSON structure.
+## Current Webhook Invocation Method
 
-I updated test_endpoints.sh to mock the Lambda behavior by sending a POST request to /webhook/ingest immediately after a successful S3 upload.
+**How:** The webhook is currently called **manually** via HTTP POST request to `/webhook/ingest` after a file is uploaded to S3.
 
-Result: The API processes files correctly without requiring additional AWS infrastructure permissions.
+**When:** The webhook is called immediately after the client successfully uploads a file to S3 using the presigned URL.
+
+**Current Flow:**
+1. Client calls `POST /files/presign` to get a presigned upload URL
+2. Client uploads PDF directly to S3 using the presigned URL
+3. **Manual Step:** Client (or developer) calls `POST /webhook/ingest` with the S3 bucket and key to trigger ingestion
+
+**Example Manual Webhook Call:**
+```bash
+curl -X POST "http://localhost:8000/webhook/ingest" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "s3_bucket": "swe-test-godwin-j",
+    "s3_key": "uploads/FILE_ID.pdf"
+  }'
+```
+
+**What the Webhook Does:**
+- Extracts `file_id` from the S3 key (format: `uploads/{file_id}.pdf`)
+- Creates a file record in the database with status `"uploaded"`
+- Starts a background task to process ingestion (extract, chunk, embed, upsert to vector DB)
+- Returns immediately (ingestion runs asynchronously)
+
+**Note:** In production with Lambda deployed, this webhook would be automatically triggered by S3 event notifications, eliminating the need for manual calls.

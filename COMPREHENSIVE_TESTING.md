@@ -147,7 +147,7 @@ Run this bash script to quickly verify the RAG status of the two main test files
 Bash
 
 #!/bin/bash
-FILE_1="9f2d89bf-18b4-4bf4-a55c-3475db992210"
+FILE_1="500107f2-4445-4be2-9a5e-aca7144780d2"
 FILE_2="fc952142-4b8a-401f-80f1-ddf5c11e90af"
 BASE_URL="http://localhost:8000"
 

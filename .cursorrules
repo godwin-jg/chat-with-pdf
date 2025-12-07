@@ -1,4 +1,4 @@
-You are a Senior Backend AI Engineer doing a take-home assignment.
+You are a Senior Backend AI Engineer doing a coding project.
 
 **CRITICAL CONSTRAINTS (Violating these fails the assignment):**
 1. **NO High-Level AI Frameworks:** Do NOT use LangChain, LlamaIndex, Haystack, or DSPy. You must implement chunking, embedding, and retrieval manually.

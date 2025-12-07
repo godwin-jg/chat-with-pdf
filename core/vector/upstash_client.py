@@ -39,7 +39,6 @@ class UpstashVectorClient:
         if not (len(vectors) == len(ids) == len(metadata)):
             raise ValueError("Vectors, IDs, and metadata must have same length.")
 
-        # Prepare data points (metadata already sanitized in ingestion_service)
         data = []
         for vector, vector_id, meta in zip(vectors, ids, metadata):
             data.append({
@@ -53,7 +52,6 @@ class UpstashVectorClient:
         if self.namespace:
             params["namespace"] = self.namespace
 
-        # Batch to avoid payload limits (20 vectors ≈ 500KB)
         BATCH_SIZE = 20
         total_upserted = 0
 
@@ -63,7 +61,7 @@ class UpstashVectorClient:
             try:
                 response = requests.post(
                     url,
-                    json=batch,  # Send array directly, not wrapped
+                    json=batch,
                     headers=self._get_headers(),
                     params=params,
                     timeout=30,

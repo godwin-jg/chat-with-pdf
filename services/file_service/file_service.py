@@ -68,7 +68,6 @@ class FileService:
         if not file:
             return None
 
-        # Generate presigned download URL
         download_url = self.s3_client.generate_presigned_url(
             s3_key=file.s3_key, expires_in=expires_in
         )

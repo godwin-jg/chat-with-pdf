@@ -34,14 +34,11 @@ def lambda_handler(event, context):
             Example: https://abc123.ngrok.io/webhook/ingest
     """
     try:
-        # Log incoming event for debugging
         print(f"Lambda triggered with event: {json.dumps(event, indent=2)}")
         
-        # Validate event structure
         if 'Records' not in event or len(event['Records']) == 0:
             raise ValueError("Invalid event: No Records found")
         
-        # Extract S3 event details
         record = event['Records'][0]
         if 's3' not in record:
             raise ValueError("Invalid event: No s3 data in record")
@@ -50,18 +47,13 @@ def lambda_handler(event, context):
         bucket = s3_event['bucket']['name']
         key = s3_event['object']['key']
         
-        # URL decode the key (S3 keys are URL-encoded)
-        # Example: "uploads%2Ffile-id.pdf" → "uploads/file-id.pdf"
         key = urllib.parse.unquote_plus(key)
         
         print(f"Processing: Bucket={bucket}, Key={key}")
         
-        # Validate key format (should be uploads/{file_id}.pdf)
         if not key.startswith('uploads/') or not key.endswith('.pdf'):
             print(f"WARNING: Key doesn't match expected format: {key}")
-            # Continue anyway - let FastAPI handle validation
         
-        # Get webhook URL from environment variable
         webhook_url = os.environ.get('WEBHOOK_URL')
         if not webhook_url:
             error_msg = "WEBHOOK_URL environment variable not set"
@@ -70,28 +62,24 @@ def lambda_handler(event, context):
         
         print(f"Calling webhook: {webhook_url}")
         
-        # Prepare payload matching WebhookIngestRequest schema
         payload = {
             "s3_bucket": bucket,
             "s3_key": key
         }
         
-        # Call FastAPI webhook endpoint
         print(f"Sending payload: {json.dumps(payload)}")
         response = requests.post(
             webhook_url,
             json=payload,
-            timeout=120,  # 2 minutes timeout
+            timeout=120,
             headers={
                 "Content-Type": "application/json",
                 "User-Agent": "AWS-Lambda-S3-Trigger/1.0"
             }
         )
         
-        # Check for HTTP errors
         response.raise_for_status()
         
-        # Log successful response
         response_data = response.json() if response.text else None
         print(f"✅ Webhook called successfully!")
         print(f"   Status: {response.status_code}")

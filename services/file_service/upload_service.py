@@ -34,10 +34,8 @@ class UploadService:
                 - presigned_url: Presigned PUT URL
                 - expires_in_seconds: Expiration time
         """
-        # Generate unique file_id
         file_id = str(uuid.uuid4())
 
-        # Generate presigned PUT URL
         presigned_url = self.s3_client.generate_presigned_upload_url(
             file_id=file_id, expires_in=expires_in
         )

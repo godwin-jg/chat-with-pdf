@@ -42,7 +42,6 @@ async def ingest_file(
     """
     ingestion_service = IngestionService()
 
-    # Create file record from S3 event
     file = await ingestion_service.create_file_from_s3_event(
         session=session, s3_bucket=request.s3_bucket, s3_key=request.s3_key
     )
@@ -53,11 +52,8 @@ async def ingest_file(
             detail=f"Invalid S3 key format. Expected: uploads/{{file_id}}.pdf",
         )
 
-    # Commit the transaction
     await session.commit()
 
-    # Start background task for full ingestion pipeline
-    # This will: Download -> Extract -> Chunk -> Embed -> Upsert -> Update status
     file_id_str = str(file.id)
     background_tasks.add_task(
         _process_ingestion_background,
@@ -70,7 +66,6 @@ async def ingest_file(
 
     from dao.models.file import IngestionStatus
     
-    # Get ingestion_status as string
     status_value = file.ingestion_status.value if isinstance(file.ingestion_status, IngestionStatus) else str(file.ingestion_status)
     
     return WebhookIngestResponse(
@@ -96,7 +91,6 @@ async def _process_ingestion_background(file_id: str) -> None:
 
     ingestion_service = IngestionService()
 
-    # Create a new database session for the background task
     AsyncSessionLocal = get_async_session_local()
     async with AsyncSessionLocal() as session:
         try:
@@ -106,7 +100,6 @@ async def _process_ingestion_background(file_id: str) -> None:
                 f"Background ingestion task failed for file_id {file_id}: {e}",
                 exc_info=True,
             )
-            # Session will be rolled back automatically on exception
         finally:
             await session.close()
 

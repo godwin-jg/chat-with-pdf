@@ -38,7 +38,6 @@ class BaseDAO(Generic[ModelType]):
         """
         query = select(self.model).where(self.model.id == id)
         if load_relationships:
-            # Add relationship loading if needed
             pass
         result = await session.execute(query)
         return result.scalar_one_or_none()
@@ -128,12 +127,10 @@ class BaseDAO(Generic[ModelType]):
         if order_by is None:
             order_by = self.model.created_at.desc()
 
-        # Get total count
         count_query = select(func.count()).select_from(self.model)
         count_result = await session.execute(count_query)
         total = count_result.scalar()
 
-        # Get paginated results
         query = select(self.model).order_by(order_by).limit(limit).offset(offset)
         result = await session.execute(query)
         records = result.scalars().all()

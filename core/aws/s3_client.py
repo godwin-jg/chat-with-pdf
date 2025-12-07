@@ -20,7 +20,6 @@ class S3Client:
         if not settings.AWS_S3_BUCKET:
             raise ValueError("AWS_S3_BUCKET must be configured")
 
-        # Use region-specific endpoint to avoid redirect issues with presigned URLs
         endpoint_url = f"https://s3.{settings.AWS_REGION}.amazonaws.com"
         
         self.s3_client = boto3.client(
@@ -115,7 +114,6 @@ class S3Client:
             raise
 
 
-# Global S3 client instance (lazy initialization)
 _s3_client: Optional[S3Client] = None
 
 

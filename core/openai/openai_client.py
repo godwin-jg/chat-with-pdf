@@ -18,20 +18,16 @@ class OpenAIClient:
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY must be configured")
 
-        # Initialize client - check if base_url is needed for company proxy
         self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = settings.OPENAI_MODEL
-        # Fallback models to try if primary model fails
-        # Prioritize models that are actually available
         self.fallback_models = [
-            "gpt-4.1",  # Available model
+            "gpt-4.1",
             "gpt-4o",
             "gpt-4-turbo",
             "gpt-4",
             "gpt-3.5-turbo",
         ]
         
-        # Try to get available models from API
         self._available_models = None
         try:
             self._check_available_models()
@@ -41,12 +37,10 @@ class OpenAIClient:
     def _check_available_models(self):
         """Check which models are available via the API."""
         try:
-            # Try to list models (if API supports it)
             models = self.client.models.list()
             self._available_models = [model.id for model in models.data]
             logger.info(f"Found {len(self._available_models)} available models via API")
         except Exception as e:
-            # API might not support model listing, that's okay
             logger.debug(f"Model listing not available: {e}")
             self._available_models = None
 
@@ -61,7 +55,7 @@ class OpenAIClient:
             "type": "function",
             "function": {
                 "name": "semantic_search",
-                "description": "Retrieve relevant chunks from the vector database based on semantic similarity. Use this when you need to search for specific information in the uploaded documents.",
+                "description": "Retrieve relevant chunks from the vector database based on semantic similarity. You MUST use this tool to search for information in the uploaded documents before answering questions about them. Always call this tool when the user asks about content from uploaded PDFs.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -102,9 +96,7 @@ class OpenAIClient:
         Raises:
             ValueError: If no models are available or PDF format not supported
         """
-        # If we have a list of available models, use those first
         if self._available_models:
-            # Prioritize available models
             available_to_try = [m for m in self._available_models if m in [self.model] + self.fallback_models]
             other_models = [m for m in [self.model] + self.fallback_models if m not in available_to_try]
             models_to_try = available_to_try + other_models
@@ -134,7 +126,6 @@ class OpenAIClient:
                 error_str = str(e)
                 last_error = e
                 
-                # Extract error details for better debugging
                 error_details = {
                     "model": model,
                     "error": error_str
@@ -142,28 +133,18 @@ class OpenAIClient:
                 last_error_details.append(error_details)
                 logger.warning(f"Model {model} failed: {error_str[:100]}")
                 
-                # If model not found, try next model
                 if "model_not_found" in error_str or "does not have access" in error_str:
                     continue
-                # If PDF format error, this model doesn't support PDFs
                 elif "Invalid MIME type" in error_str or "invalid_image_format" in error_str:
                     continue
-                # Check for authentication errors
                 elif "Invalid API key" in error_str or "unauthorized" in error_str.lower() or "401" in error_str:
                     raise ValueError(f"Invalid API key or authentication error: {error_str}")
-                # Rate limit or timeout - try next model
                 elif "rate_limit" in error_str.lower() or "timeout" in error_str.lower():
                     continue
-                # Other errors - might be a different issue, but try next model anyway
                 else:
-                    # Check if it's a specific model issue or general API issue
                     if "project" in error_str.lower() and "access" in error_str.lower():
-                        # This is a model access issue, continue to next
                         continue
-                    # Unknown error, but continue trying
                     continue
-        
-        # All models failed - provide detailed error info
         error_summary = "\n".join([f"  - {d['model']}: {d['error'][:80]}..." for d in last_error_details[:3]])
         if "model_not_found" in str(last_error) or "does not have access" in str(last_error) or "project" in str(last_error).lower():
             raise ValueError(
@@ -283,23 +264,17 @@ class OpenAIClient:
             )
 
         try:
-            # Open PDF from bytes
             pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
             image_base64_list = []
 
-            # Convert each page to image (limit to max_pages)
             for page_num in range(min(len(pdf_doc), max_pages)):
                 page = pdf_doc[page_num]
                 
-                # Render page as PNG image (scale factor 2.0 for better quality)
-                # DPI: 150 (2.0 * 72 = 144 DPI, good balance of quality and size)
-                mat = fitz.Matrix(2.0, 2.0)  # 2x zoom for better quality
+                mat = fitz.Matrix(2.0, 2.0)
                 pix = page.get_pixmap(matrix=mat)
                 
-                # Convert to PNG bytes
                 img_bytes = pix.tobytes("png")
                 
-                # Encode to base64
                 img_base64 = base64.b64encode(img_bytes).decode("utf-8")
                 image_base64_list.append(img_base64)
                 
@@ -376,7 +351,6 @@ class OpenAIClient:
         """
         content = [{"type": "text", "text": text}]
         
-        # Add each image to the content
         for img_base64 in image_base64_list:
             content.append({
                 "type": "image_url",
@@ -422,13 +396,11 @@ class OpenAIClient:
         try:
             logger.info(f"Generating embeddings for {len(text_chunks)} chunks using {settings.OPENAI_EMBEDDING_MODEL}")
             
-            # Call OpenAI embeddings API
             response = self.client.embeddings.create(
                 model=settings.OPENAI_EMBEDDING_MODEL,
                 input=text_chunks,
             )
             
-            # Extract embeddings from response
             embeddings = [item.embedding for item in response.data]
             
             logger.info(
@@ -442,7 +414,6 @@ class OpenAIClient:
             raise ValueError(f"Failed to generate embeddings: {str(e)}")
 
 
-# Global OpenAI client instance (lazy initialization)
 _openai_client: Optional[OpenAIClient] = None
 
 

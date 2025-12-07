@@ -7,23 +7,16 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
-# Import config and database
 from config import settings
 from database import Base
 
-# Import all models to ensure they're registered with Base
 from dao.models import File, Conversation, Message  # noqa: F401
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Helper function to ensure DATABASE_URL uses asyncpg driver
 def _normalize_database_url(url: str) -> str:
     """Ensure database URL uses postgresql+asyncpg:// driver."""
     if url.startswith("postgresql://"):
@@ -35,18 +28,10 @@ def _normalize_database_url(url: str) -> str:
     return url
 
 
-# Set the SQLAlchemy URL from settings (with asyncpg driver)
 database_url = _normalize_database_url(settings.DATABASE_URL)
 config.set_main_option("sqlalchemy.url", database_url)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
 target_metadata = Base.metadata
-
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
 
 
 def run_migrations_offline() -> None:

@@ -6,14 +6,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Try pymupdf first (better quality)
 try:
     import fitz  # pymupdf
     PYMUPDF_AVAILABLE = True
 except ImportError:
     PYMUPDF_AVAILABLE = False
 
-# Fallback to PyPDF2
 try:
     from PyPDF2 import PdfReader
     PYPDF2_AVAILABLE = True
@@ -38,7 +36,6 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
         ImportError: If neither pymupdf nor PyPDF2 is installed
         Exception: If PDF parsing fails
     """
-    # Try pymupdf first (better quality)
     if PYMUPDF_AVAILABLE:
         try:
             pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -62,7 +59,6 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
             except:
                 pass
 
-    # Fallback to PyPDF2
     if PYPDF2_AVAILABLE:
         try:
             from io import BytesIO
@@ -85,7 +81,6 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
             logger.error(f"Error extracting text from PDF with PyPDF2: {e}")
             raise
 
-    # Neither library available
     raise ImportError(
         "Neither pymupdf nor PyPDF2 is installed. "
         "Install one with: pip install pymupdf OR pip install pypdf2"
