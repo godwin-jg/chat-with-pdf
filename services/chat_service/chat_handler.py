@@ -1,7 +1,9 @@
 """
-Chat handler service for processing chat requests with Base64 PDF support.
+Chat handler service for processing chat requests with Base64 PDF and RAG support.
 """
-from typing import List, Dict, Any, Tuple
+import json
+import logging
+from typing import List, Dict, Any, Tuple, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from dao.chat_dao import ConversationDAO, MessageDAO
 from dao.file_dao import FileDAO
@@ -11,7 +13,7 @@ from dao.models.file import File, IngestionStatus
 from core.openai.openai_client import get_openai_client
 from core.aws.s3_client import get_s3_client
 from core.parsers.pdf_parser import extract_text_from_pdf
-import logging
+from core.vector.upstash_client import get_upstash_client
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,7 @@ class ChatHandler:
         self.file_dao = FileDAO()
         self.openai_client = get_openai_client()
         self.s3_client = get_s3_client()
+        self.upstash_client = get_upstash_client()
 
     async def get_or_create_conversation(
         self, session: AsyncSession, conversation_id: Optional[str] = None
@@ -306,6 +309,7 @@ class ChatHandler:
             file = await self.file_dao.get_by_id(session, file_id)
             if not file:
                 raise ValueError(f"File with id {file_id} not found")
+            logger.info(f"File {file_id} status: {file.ingestion_status}")
 
         # Store user message
         user_message = await self.message_dao.create(
@@ -315,9 +319,12 @@ class ChatHandler:
             content=message,
             file_id=file.id if file else None,
         )
+        
+        # Commit user message so it's available for collection
+        await session.commit()
+        await session.refresh(user_message)
 
         # Collect file_ids from conversation and check if any are completed
-        # Also check the current file if provided
         file_ids, has_completed_files = await self.collect_file_ids_from_conversation(
             session, str(conversation.id)
         )
@@ -329,7 +336,7 @@ class ChatHandler:
                 file_ids.append(file_id_str)
             has_completed_files = True
         
-        logger.info(f"Collected {len(file_ids)} file_id(s), has_completed={has_completed_files}")
+        logger.info(f"Collected {len(file_ids)} file_id(s), has_completed={has_completed_files}, file_ids={file_ids}")
 
         # Build message history with context patching
         message_history = await self.build_message_history(
@@ -401,34 +408,37 @@ class ChatHandler:
                             
                             logger.info(f"Retrieved {len(chunks)} chunks from vector database")
                             
-                            # Build tool response message
+                            # Build tool response message (OpenAI format)
                             tool_result = {
-                                "tool_call_id": tool_call["id"],
                                 "role": "tool",
-                                "name": "semantic_search",
                                 "content": json.dumps({
                                     "chunks": chunks,
                                     "count": len(chunks)
-                                })
+                                }),
+                                "tool_call_id": tool_call["id"]
                             }
                             tool_messages.append(tool_result)
                     
-                    # Add tool call to message history
-                    if response_text:
-                        message_history.append({
-                            "role": "assistant",
-                            "content": response_text,
-                            "tool_calls": [
-                                {
-                                    "id": tc["id"],
-                                    "type": tc["type"],
-                                    "function": tc["function"]
+                    # Add assistant message with tool_calls to message history
+                    # This must be added before tool messages
+                    assistant_message_with_tools = {
+                        "role": "assistant",
+                        "content": response_text or None,  # Can be None if LLM didn't provide text
+                        "tool_calls": [
+                            {
+                                "id": tc["id"],
+                                "type": tc["type"],
+                                "function": {
+                                    "name": tc["function"]["name"],
+                                    "arguments": tc["function"]["arguments"]
                                 }
-                                for tc in tool_calls
-                            ]
-                        })
+                            }
+                            for tc in tool_calls
+                        ]
+                    }
+                    message_history.append(assistant_message_with_tools)
                     
-                    # Add tool results
+                    # Add tool results (must come after assistant message with tool_calls)
                     message_history.extend(tool_messages)
                     
                     # Second LLM call with tool results

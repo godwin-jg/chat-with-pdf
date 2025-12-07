@@ -21,7 +21,7 @@ I implemented a **custom chunking solution** instead of using high-level framewo
 
 3. **Word Boundary Awareness**: My implementation respects word boundaries and sentence endings, preventing chunks from breaking mid-word or mid-sentence, which improves semantic coherence.
 
-4. **No External Dependencies**: By implementing chunking manually, we avoid adding heavy dependencies and maintain full control over the chunking logic.
+4. **No External Dependencies**: By implementing chunking manually, I avoid adding heavy dependencies and maintain full control over the chunking logic.
 
 ### Implementation Details
 
@@ -184,9 +184,9 @@ CREATE TABLE files (
 
 3. **S3 Key as Unique Index**: Ensures one database record per S3 object, preventing duplicates.
 
-4. **No Original Text Storage**: We don't store the extracted text in the database because:
+4. **No Original Text Storage**: I don't store the extracted text in the database because:
    - Text can be large and would bloat the database
-   - We can always re-extract from S3 if needed
+   - I can always re-extract from S3 if needed
    - Vector database stores chunk text in metadata
 
 ### Conversations Table
@@ -204,7 +204,7 @@ CREATE TABLE conversations (
 
 **Key Design Decisions:**
 
-1. **No File Association at Conversation Level**: Unlike typical designs, we don't store `file_id` at the conversation level. This enables:
+1. **No File Association at Conversation Level**: Unlike typical designs, I don't store `file_id` at the conversation level. This enables:
    - **Multi-file conversations**: A single conversation can reference multiple PDFs
    - **Flexible file association**: Files are associated with individual messages, not entire conversations
    - **Dynamic context**: Different messages in the same conversation can reference different files
