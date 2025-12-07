@@ -45,6 +45,13 @@ aws-credentials*.txt
 *.key
 .aws/
 
+# API Keys and Test Files (CRITICAL - never commit credentials)
+test_my_api_key.py
+*_api_key*.py
+*_key*.py
+*secret*.py
+*credentials*.py
+
 # Database
 *.db
 *.sqlite

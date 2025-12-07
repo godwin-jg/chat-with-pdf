@@ -43,7 +43,7 @@ async def chat(
     chat_handler = ChatHandler()
 
     try:
-        conversation, user_message, assistant_response = (
+        conversation, user_message, assistant_response, retrieval_mode, retrieved_chunks = (
             await chat_handler.process_chat(
                 session=session,
                 message=request.message,
@@ -52,11 +52,22 @@ async def chat(
             )
         )
 
+        # Format retrieved chunks for response
+        formatted_chunks = []
+        if retrieved_chunks:
+            for chunk in retrieved_chunks:
+                formatted_chunks.append(
+                    RetrievedChunk(
+                        chunk_text=chunk.get("chunk_text", ""),
+                        similarity_score=chunk.get("similarity_score", 0.0),
+                    )
+                )
+
         return ChatResponse(
             conversation_id=str(conversation.id),
             response=assistant_response,
-            retrieval_mode="inline",
-            retrieved_chunks=[],  # Empty for inline mode
+            retrieval_mode=retrieval_mode,
+            retrieved_chunks=formatted_chunks,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

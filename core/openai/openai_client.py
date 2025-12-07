@@ -2,7 +2,7 @@
 OpenAI client for chat completions with Base64 PDF support.
 """
 import base64
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from openai import OpenAI
 from config import settings
 import logging
@@ -50,10 +50,41 @@ class OpenAIClient:
             logger.debug(f"Model listing not available: {e}")
             self._available_models = None
 
+    def get_semantic_search_tool(self) -> Dict[str, Any]:
+        """
+        Get the semantic_search tool definition for OpenAI tool calling.
+        
+        Returns:
+            Tool definition dictionary
+        """
+        return {
+            "type": "function",
+            "function": {
+                "name": "semantic_search",
+                "description": "Retrieve relevant chunks from the vector database based on semantic similarity. Use this when you need to search for specific information in the uploaded documents.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query to find relevant chunks"
+                        },
+                        "top_k": {
+                            "type": "integer",
+                            "description": "Number of top chunks to retrieve (default: 5)",
+                            "default": 5
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }
+
     def chat_completion(
         self,
         messages: List[Dict[str, Any]],
         temperature: float = 0.7,
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """
         Send chat completion request to OpenAI with automatic model fallback.
@@ -86,11 +117,16 @@ class OpenAIClient:
         for model in models_to_try:
             try:
                 logger.info(f"Trying model: {model}")
-                response = self.client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                )
+                kwargs = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": temperature,
+                }
+                if tools:
+                    kwargs["tools"] = tools
+                    kwargs["tool_choice"] = "auto"
+                
+                response = self.client.chat.completions.create(**kwargs)
                 if model != self.model:
                     logger.warning(f"Using fallback model: {model} (primary: {self.model} not available)")
                 return response.choices[0].message.content
@@ -148,6 +184,66 @@ class OpenAIClient:
             )
         else:
             raise ValueError(f"OpenAI API error: {last_error}")
+
+    def chat_completion_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        temperature: float = 0.7,
+    ) -> Tuple[str, Optional[List[Dict[str, Any]]]]:
+        """
+        Send chat completion with tool calling support.
+        
+        Returns both the response and any tool calls made.
+        
+        Args:
+            messages: List of message dictionaries
+            tools: List of tool definitions
+            temperature: Sampling temperature
+            
+        Returns:
+            Tuple of (response_text, tool_calls)
+            tool_calls is None if no tools were called, otherwise list of tool call dicts
+        """
+        models_to_try = [self.model] + [m for m in self.fallback_models if m != self.model]
+        
+        for model in models_to_try:
+            try:
+                logger.info(f"Trying model {model} with tool calling")
+                response = self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice="auto",
+                    temperature=temperature,
+                )
+                
+                message = response.choices[0].message
+                tool_calls = None
+                
+                if message.tool_calls:
+                    tool_calls = []
+                    for tool_call in message.tool_calls:
+                        tool_calls.append({
+                            "id": tool_call.id,
+                            "type": tool_call.type,
+                            "function": {
+                                "name": tool_call.function.name,
+                                "arguments": tool_call.function.arguments,
+                            }
+                        })
+                    logger.info(f"LLM requested {len(tool_calls)} tool call(s)")
+                
+                return message.content or "", tool_calls
+                
+            except Exception as e:
+                error_str = str(e)
+                if "model_not_found" in error_str or "does not have access" in error_str:
+                    continue
+                else:
+                    raise
+        
+        raise ValueError(f"Failed to call model with tools: {models_to_try}")
 
     def pdf_to_base64(self, pdf_bytes: bytes) -> str:
         """

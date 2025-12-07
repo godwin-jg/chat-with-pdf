@@ -245,15 +245,43 @@ class ChatHandler:
 
         return openai_messages
 
+    async def collect_file_ids_from_conversation(
+        self, session: AsyncSession, conversation_id: str
+    ) -> Tuple[List[str], bool]:
+        """
+        Collect all file_ids from conversation and check if any are completed.
+        
+        Returns:
+            Tuple of (list of file_ids, has_completed_files)
+        """
+        messages = await self.message_dao.get_by_conversation_id(
+            session, conversation_id
+        )
+        
+        file_ids = []
+        has_completed = False
+        
+        for msg in messages:
+            if msg.file_id:
+                file_id_str = str(msg.file_id)
+                if file_id_str not in file_ids:
+                    file_ids.append(file_id_str)
+                    # Check ingestion status
+                    file = await self.file_dao.get_by_id(session, file_id_str)
+                    if file and file.ingestion_status == IngestionStatus.COMPLETED:
+                        has_completed = True
+        
+        return file_ids, has_completed
+
     async def process_chat(
         self,
         session: AsyncSession,
         message: str,
         conversation_id: Optional[str] = None,
         file_id: Optional[str] = None,
-    ) -> Tuple[Conversation, Message, str]:
+    ) -> Tuple[Conversation, Message, str, str, Optional[List[Dict[str, Any]]]]:
         """
-        Process a chat request with inline PDF support.
+        Process a chat request with dynamic mode switching (inline or RAG).
 
         Args:
             session: Database session
@@ -262,7 +290,7 @@ class ChatHandler:
             file_id: Optional file ID to associate with this message
 
         Returns:
-            Tuple of (conversation, user_message, assistant_response_text)
+            Tuple of (conversation, user_message, assistant_response_text, retrieval_mode, retrieved_chunks)
 
         Raises:
             ValueError: If file_id is provided but file not found
@@ -288,44 +316,175 @@ class ChatHandler:
             file_id=file.id if file else None,
         )
 
+        # Collect file_ids from conversation and check if any are completed
+        # Also check the current file if provided
+        file_ids, has_completed_files = await self.collect_file_ids_from_conversation(
+            session, str(conversation.id)
+        )
+        
+        # If current file is completed, add it to the list and mark as completed
+        if file and file.ingestion_status == IngestionStatus.COMPLETED:
+            file_id_str = str(file.id)
+            if file_id_str not in file_ids:
+                file_ids.append(file_id_str)
+            has_completed_files = True
+        
+        logger.info(f"Collected {len(file_ids)} file_id(s), has_completed={has_completed_files}")
+
         # Build message history with context patching
         message_history = await self.build_message_history(
             session, str(conversation.id)
         )
 
-        # Get assistant response from OpenAI
-        # If PDF format fails, retry with text extraction
-        try:
-            assistant_response_text = self.openai_client.chat_completion(
-                messages=message_history
-            )
-        except ValueError as e:
-            error_str = str(e)
-            # If PDF format not supported, rebuild messages with text extraction
-            if "Invalid MIME type" in error_str or "invalid_image_format" in error_str:
-                logger.warning("Model doesn't support PDFs via vision API. Rebuilding messages with text extraction...")
-                # Rebuild message history with text extraction instead of base64
-                message_history = await self.build_message_history_with_text_extraction(
-                    session, str(conversation.id)
+        retrieval_mode = RetrievalMode.INLINE.value
+        retrieved_chunks = None
+
+        # If any files are completed, enable RAG mode with tool calling
+        if has_completed_files and file_ids:
+            logger.info(f"RAG mode enabled: {len(file_ids)} file(s) with completed ingestion")
+            
+            # Add semantic_search tool
+            tools = [self.openai_client.get_semantic_search_tool()]
+            
+            # First LLM call with tool enabled
+            try:
+                response_text, tool_calls = self.openai_client.chat_completion_with_tools(
+                    messages=message_history,
+                    tools=tools,
                 )
+                
+                # If LLM called the tool, execute it and call LLM again
+                if tool_calls:
+                    logger.info(f"LLM called {len(tool_calls)} tool(s)")
+                    
+                    # Process tool calls
+                    tool_messages = []
+                    all_retrieved_chunks = []
+                    
+                    for tool_call in tool_calls:
+                        if tool_call["function"]["name"] == "semantic_search":
+                            # Parse arguments
+                            args = json.loads(tool_call["function"]["arguments"])
+                            query = args.get("query", message)
+                            top_k = args.get("top_k", 5)
+                            
+                            logger.info(f"Executing semantic_search: query='{query}', top_k={top_k}")
+                            
+                            # Generate query embedding
+                            query_embeddings = self.openai_client.get_embeddings([query])
+                            query_vector = query_embeddings[0]
+                            
+                            # Build filter for file_ids
+                            if len(file_ids) == 1:
+                                filter_str = f"file_id = '{file_ids[0]}'"
+                            else:
+                                filter_parts = [f"file_id = '{fid}'" for fid in file_ids]
+                                filter_str = " OR ".join(filter_parts)
+                            
+                            # Query Upstash Vector
+                            results = self.upstash_client.query_vectors(
+                                query_vector=query_vector,
+                                top_k=top_k,
+                                filter=filter_str,
+                            )
+                            
+                            # Format retrieved chunks
+                            chunks = []
+                            for result in results:
+                                metadata = result.get("metadata", {})
+                                chunk_data = {
+                                    "chunk_text": metadata.get("chunk_text", ""),
+                                    "similarity_score": result.get("score", 0.0),
+                                }
+                                chunks.append(chunk_data)
+                                all_retrieved_chunks.append(chunk_data)
+                            
+                            logger.info(f"Retrieved {len(chunks)} chunks from vector database")
+                            
+                            # Build tool response message
+                            tool_result = {
+                                "tool_call_id": tool_call["id"],
+                                "role": "tool",
+                                "name": "semantic_search",
+                                "content": json.dumps({
+                                    "chunks": chunks,
+                                    "count": len(chunks)
+                                })
+                            }
+                            tool_messages.append(tool_result)
+                    
+                    # Add tool call to message history
+                    if response_text:
+                        message_history.append({
+                            "role": "assistant",
+                            "content": response_text,
+                            "tool_calls": [
+                                {
+                                    "id": tc["id"],
+                                    "type": tc["type"],
+                                    "function": tc["function"]
+                                }
+                                for tc in tool_calls
+                            ]
+                        })
+                    
+                    # Add tool results
+                    message_history.extend(tool_messages)
+                    
+                    # Second LLM call with tool results
+                    final_response = self.openai_client.chat_completion(
+                        messages=message_history,
+                        tools=None,  # No tools on second call
+                    )
+                    
+                    retrieval_mode = RetrievalMode.RAG.value
+                    retrieved_chunks = all_retrieved_chunks
+                    assistant_response_text = final_response
+                    
+                else:
+                    # No tool calls - use direct response
+                    assistant_response_text = response_text or ""
+                    retrieval_mode = RetrievalMode.INLINE.value
+                    
+            except Exception as e:
+                logger.error(f"Tool calling failed: {e}", exc_info=True)
+                # Fallback to inline mode
                 assistant_response_text = self.openai_client.chat_completion(
                     messages=message_history
                 )
-            else:
-                raise
+                retrieval_mode = RetrievalMode.INLINE.value
+        else:
+            # Inline mode: no completed files or no files at all
+            logger.info("Using inline mode (no completed files)")
+            try:
+                assistant_response_text = self.openai_client.chat_completion(
+                    messages=message_history
+                )
+            except ValueError as e:
+                error_str = str(e)
+                if "Invalid MIME type" in error_str or "invalid_image_format" in error_str:
+                    logger.warning("Model doesn't support PDFs via vision API. Rebuilding messages with text extraction...")
+                    message_history = await self.build_message_history_with_text_extraction(
+                        session, str(conversation.id)
+                    )
+                    assistant_response_text = self.openai_client.chat_completion(
+                        messages=message_history
+                    )
+                else:
+                    raise
 
-        # Store assistant message with retrieval_mode="inline"
+        # Store assistant message
         assistant_message = await self.message_dao.create(
             session,
             conversation_id=conversation.id,
             role=MessageRole.ASSISTANT.value,
             content=assistant_response_text,
-            retrieval_mode=RetrievalMode.INLINE.value,
-            retrieved_chunks=None,  # No chunks for inline mode
+            retrieval_mode=retrieval_mode,
+            retrieved_chunks=retrieved_chunks,
         )
 
         # Commit transaction
         await session.commit()
 
-        return conversation, user_message, assistant_response_text
+        return conversation, user_message, assistant_response_text, retrieval_mode, retrieved_chunks
 
