@@ -1,253 +1,164 @@
 # Comprehensive Testing Guide
-## Based on Assignment Requirements
 
-This guide covers all testing scenarios required by the assignment, including multi-file RAG, mode switching, and edge cases.
+This document outlines the testing procedures I established to verify the requirements of the assignment. It covers the hybrid architecture (Inline vs. RAG), multi-file context switching, and state persistence.
 
 ## Prerequisites
 
-- Server running on `http://localhost:8000`
-- Two PDF files uploaded and ingested:
-  - `minecraft.pdf` (file_id: `9f2d89bf-18b4-4bf4-a55c-3475db992210`)
-  - `SamplePDF.pdf` (file_id: `fc952142-4b8a-401f-80f1-ddf5c11e90af`)
+- **Server**: Ensure the FastAPI server is running (`uvicorn main:app --reload`).
+- **Test Files**: For the RAG scenarios, I am using two specific files that have already been ingested into the system:
+  - **File A** (`minecraft.pdf`): `9f2d89bf-18b4-4bf4-a55c-3475db992210`
+  - **File B** (`SamplePDF.pdf`): `fc952142-4b8a-401f-80f1-ddf5c11e90af`
+
+---
 
 ## Test Scenarios
 
-### 1. Single File RAG Mode ✅
+### 1. Single File Inline Mode (Fresh Upload)
 
-**Requirement**: When file has `ingestion_status="completed"`, use RAG mode with tool calling.
+**Objective**: Verify that the system defaults to "Inline Mode" (using Vision API/Base64) when a file is uploaded but not yet ingested.
+
+*Note: Since the prerequisite files are already "completed", I must upload a new file to test this specific state.*
+
+**Steps:**
+1.  **Upload a new PDF** via the `/presign` and `/upload` flow (or use `test_endpoints.sh`).
+2.  **Verify Status**: Ensure `ingestion_status` is `"uploaded"`.((you can use this `file_id: 500107f2-4445-4be2-9a5e-aca7144780d2` which is manually set as status `uploaded`for sample testing))
+3.  **Chat Request**:
 
 ```bash
 curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "What is the main theme?",
-    "file_id": "9f2d89bf-18b4-4bf4-a55c-3475db992210"
-  }' | python3 -m json.tool
-```
+    "message": "What is this document about?",
+    "file_id": "YOUR_NEW_FILE_ID"
+  }'
+Verification:
 
-**Expected**:
-- `retrieval_mode: "rag"`
-- `retrieved_chunks` with similarity scores
-- Response references document content
+✅ retrieval_mode must be "inline".
 
-### 2. Multi-File RAG Mode ✅
+✅ retrieved_chunks must be empty [].
 
-**Requirement**: Collect all `file_ids` from conversation history and search across all completed files.
+✅ Response should describe the document (proving the Vision API received the images).
 
-**Test Flow**:
-1. Start conversation with `minecraft.pdf`
-2. Add message with `SamplePDF.pdf` in same conversation
-3. Ask question that requires both files
+2. Single File RAG Mode
+Objective: Verify that the system automatically switches to "RAG Mode" (Vector Search) for completed files.
 
-```bash
-# Step 1: Start with minecraft.pdf
-CONV_ID=$(curl -s -X POST "http://localhost:8000/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "What does this document say about Minecraft?",
-    "file_id": "9f2d89bf-18b4-4bf4-a55c-3475db992210"
-  }' | python3 -c "import sys, json; print(json.load(sys.stdin)['conversation_id'])")
+Request:
 
-# Step 2: Add SamplePDF.pdf to same conversation
+Bash
+
 curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"message\": \"Compare the information about Minecraft in both documents\",
-    \"conversation_id\": \"$CONV_ID\",
-    \"file_id\": \"fc952142-4b8a-401f-80f1-ddf5c11e90af\"
-  }" | python3 -m json.tool
-```
+  -d '{
+    "message": "What is the main theme of this document?",
+    "file_id": "9f2d89bf-18b4-4bf4-a55c-3475db992210"
+  }'
+Verification:
 
-**Expected**:
-- `retrieval_mode: "rag"`
-- `retrieved_chunks` from BOTH files
-- Response synthesizes information from both documents
+✅ retrieval_mode must be "rag".
 
-### 3. Direct Multi-File Retrieval ✅
+✅ retrieved_chunks must contain data with similarity scores.
 
-**Requirement**: `/retrieve` endpoint supports multiple `file_ids` with metadata filtering.
+✅ Server logs should show Executing semantic_search.
 
-```bash
+3. Multi-File RAG Mode (Core Requirement)
+Objective: Verify that the system correctly aggregates context from multiple files within a single conversation history.
+
+Step 1: Start Conversation with File A
+
+Bash
+
+# This returns a conversation_id. Save it.
+curl -X POST "http://localhost:8000/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "How do you craft items?",
+    "file_id": "9f2d89bf-18b4-4bf4-a55c-3475db992210"
+  }'
+Step 2: Add File B to the Same Conversation
+
+Bash
+
+# Replace CONVERSATION_ID below
+curl -X POST "http://localhost:8000/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Compare the previous crafting info with this document",
+    "conversation_id": "INSERT_CONVERSATION_ID_HERE",
+    "file_id": "fc952142-4b8a-401f-80f1-ddf5c11e90af"
+  }'
+Verification:
+
+✅ The final response should synthesize information from both PDFs.
+
+✅ retrieved_chunks in the final response should list chunks from both 9f2d... and fc95....
+
+✅ The system correctly identified that the context window required both files.
+
+4. Direct Retrieval Endpoint
+Objective: Verify the vector search logic works independently of the LLM and properly handles list filtering.
+
+Request:
+
+Bash
+
 curl -X POST "http://localhost:8000/retrieve" \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "What is Minecraft?",
+    "query": "mining and crafting",
     "file_ids": [
       "9f2d89bf-18b4-4bf4-a55c-3475db992210",
       "fc952142-4b8a-401f-80f1-ddf5c11e90af"
     ],
     "top_k": 5
-  }' | python3 -m json.tool
-```
+  }'
+Verification:
 
-**Expected**:
-- Results from both files
-- Each result shows which `file_id` it came from
-- Results sorted by similarity score
+✅ The results list should contain mixed entries from both file IDs.
 
-### 4. Mode Switching (Uploaded → Completed) ✅
+✅ Similarity scores should be sorted in descending order.
 
-**Requirement**: System should switch from inline to RAG when file ingestion completes.
+5. Mode Switching & Persistence
+Objective: Ensure the transition from Inline to RAG is seamless and history is preserved accurately.
 
-**Test Flow**:
-1. Upload new file (status: `uploaded`)
-2. Chat with file (should use inline mode)
-3. Trigger ingestion (status: `completed`)
-4. Chat again (should use RAG mode)
+Flow:
 
-```bash
-# Step 1: Upload and chat (inline mode)
-# ... upload file ...
-curl -X POST "http://localhost:8000/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "What is this about?",
-    "file_id": "NEW-FILE-ID"
-  }' | python3 -m json.tool
-# Expected: retrieval_mode: "inline"
+Upload File -> Status is uploaded.
 
-# Step 2: After ingestion completes
-curl -X POST "http://localhost:8000/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "What is this about?",
-    "file_id": "NEW-FILE-ID"
-  }' | python3 -m json.tool
-# Expected: retrieval_mode: "rag"
-```
+Chat 1: System uses Inline Mode.
 
-### 5. Tool Calling Verification ✅
+Simulate Webhook: Call /webhook/ingest manually.
 
-**Requirement**: LLM should call `semantic_search` tool when RAG mode is enabled.
+Check Status: Status becomes completed.
 
-**Check Server Logs For**:
-- `"RAG mode enabled: X file(s) with completed ingestion"`
-- `"LLM called 1 tool(s)"`
-- `"Executing semantic_search: query='...', top_k=5"`
-- `"Retrieved X chunks from vector database"`
+Chat 2: System uses RAG Mode for the same file in the same conversation.
 
-### 6. Metadata Filtering ✅
+Verification (History Check):
 
-**Requirement**: Only retrieve chunks from `file_ids` in conversation history.
+Bash
 
-**Test**: 
-- Start conversation with `file_id_1`
-- Add message with `file_id_2`
-- Ask question
-- Verify retrieved chunks only come from these two files
+curl -X GET "http://localhost:8000/chats/{CONVERSATION_ID}"
+✅ Message 1 metadata: retrieval_mode: "inline"
 
-### 7. Conversation History Persistence ✅
+✅ Message 2 metadata: retrieval_mode: "rag"
 
-**Requirement**: Messages stored with correct `retrieval_mode` and `retrieved_chunks`.
+Quick Validation Script
+Run this bash script to quickly verify the RAG status of the two main test files.
 
-```bash
-CONV_ID="YOUR-CONVERSATION-ID"
-curl -X GET "http://localhost:8000/chats/$CONV_ID" | python3 -m json.tool
-```
+Bash
 
-**Expected**:
-- All messages stored correctly
-- Assistant messages have `retrieval_mode: "rag"` or `"inline"`
-- `retrieved_chunks` stored for RAG mode messages
-
-### 8. Edge Cases
-
-#### 8.1 No File in Message
-```bash
-curl -X POST "http://localhost:8000/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Hello, how are you?",
-    "conversation_id": "EXISTING-CONV-ID"
-  }' | python3 -m json.tool
-```
-**Expected**: Normal chat without file context
-
-#### 8.2 File Not Found
-```bash
-curl -X POST "http://localhost:8000/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "Test",
-    "file_id": "00000000-0000-0000-0000-000000000000"
-  }' | python3 -m json.tool
-```
-**Expected**: 400 error with "File not found"
-
-#### 8.3 File Ingestion Failed
-```bash
-# Check file with status="failed"
-curl -X GET "http://localhost:8000/files/FAILED-FILE-ID" | python3 -m json.tool
-```
-**Expected**: File status shows `"failed"`, system should handle gracefully
-
-## Requirements Checklist
-
-### From `.cursorrules`:
-- ✅ NO High-Level AI Frameworks (LangChain, LlamaIndex, etc.)
-- ✅ Naming Convention: `swe-test-godwin-j` prefix
-- ✅ Tech Stack: FastAPI, Pydantic, SQLAlchemy (Async), OpenAI SDK, Upstash Vector, AWS S3
-- ✅ Hybrid System: Inline + RAG modes
-- ✅ State Management: Track ingestion status
-- ✅ Separation of Concerns: routers → services → dao
-- ✅ Type Safety: Pydantic models
-
-### From `assignment_requirements.md`:
-- ✅ Milestone 1: File Upload & CRUD APIs
-- ✅ Milestone 2: Inline Chat with Base64 PDF
-- ✅ Milestone 3: RAG Pipeline & Retrieval
-- ✅ Milestone 4: Dynamic Mode Switching with Tool Calling
-  - ✅ Tool definition without `file_ids` parameter
-  - ✅ Collect `file_ids` from conversation history
-  - ✅ Metadata filtering in vector search
-  - ✅ Manual tool calling loop
-  - ✅ Store `retrieval_mode` and `retrieved_chunks`
-
-### From `technical-setup.md`:
-- ✅ Upstash Vector namespace: `swe-test-godwin-j`
-- ✅ AWS S3 bucket: `swe-test-godwin-j-uploads`
-- ✅ OpenAI models: `gpt-4.1-mini` or `gpt-4o-mini`, `text-embedding-3-small`
-- ✅ Manual chunking (no frameworks)
-- ✅ Manual tool calling (no frameworks)
-
-## Quick Test Script
-
-```bash
 #!/bin/bash
-
-MINECRAFT_FILE="9f2d89bf-18b4-4bf4-a55c-3475db992210"
-SAMPLE_FILE="fc952142-4b8a-401f-80f1-ddf5c11e90af"
+FILE_1="9f2d89bf-18b4-4bf4-a55c-3475db992210"
+FILE_2="fc952142-4b8a-401f-80f1-ddf5c11e90af"
 BASE_URL="http://localhost:8000"
 
-echo "=== Comprehensive Testing ==="
-echo ""
-
-echo "1. Single File RAG (minecraft.pdf)"
+echo "--- Testing File 1 (Minecraft) ---"
 curl -s -X POST "$BASE_URL/chat" \
   -H "Content-Type: application/json" \
-  -d "{\"message\": \"What is the main theme?\", \"file_id\": \"$MINECRAFT_FILE\"}" \
-  | python3 -m json.tool | grep -E "(retrieval_mode|retrieved_chunks)" | head -5
-echo ""
+  -d "{\"message\": \"Test query\", \"file_id\": \"$FILE_1\"}" \
+  | grep -o '"retrieval_mode":"[^"]*"'
 
-echo "2. Multi-File RAG"
-CONV_ID=$(curl -s -X POST "$BASE_URL/chat" \
-  -H "Content-Type: application/json" \
-  -d "{\"message\": \"What is Minecraft?\", \"file_id\": \"$MINECRAFT_FILE\"}" \
-  | python3 -c "import sys, json; print(json.load(sys.stdin)['conversation_id'])")
-
+echo -e "\n--- Testing File 2 (Sample) ---"
 curl -s -X POST "$BASE_URL/chat" \
   -H "Content-Type: application/json" \
-  -d "{\"message\": \"Compare both documents\", \"conversation_id\": \"$CONV_ID\", \"file_id\": \"$SAMPLE_FILE\"}" \
-  | python3 -m json.tool | grep -E "(retrieval_mode|retrieved_chunks)" | head -5
-echo ""
-
-echo "3. Direct Multi-File Retrieval"
-curl -s -X POST "$BASE_URL/retrieve" \
-  -H "Content-Type: application/json" \
-  -d "{\"query\": \"Minecraft\", \"file_ids\": [\"$MINECRAFT_FILE\", \"$SAMPLE_FILE\"], \"top_k\": 3}" \
-  | python3 -m json.tool | head -20
-echo ""
-
-echo "=== Testing Complete ==="
-```
-
+  -d "{\"message\": \"Test query\", \"file_id\": \"$FILE_2\"}" \
+  | grep -o '"retrieval_mode":"[^"]*"'
